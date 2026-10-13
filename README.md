@@ -54,10 +54,25 @@ ReportGenerator().generate_markdown_report(results, "failure_report.md")
 
 ## Command-line usage
 
+Requires Python 3.8 or later; the project uses only the Python standard library.
 Set `OPENAI_API_KEY` before running the CLI. Optionally set `OPENAI_MODEL`
 (defaults to `gpt-4o-mini`) or `OPENAI_BASE_URL` (defaults to the OpenAI API URL)
-to select a model or compatible endpoint:
+to select a model or OpenAI-compatible endpoint. Set credentials through your
+environment or secret manager; do not commit API keys to the repository:
 
 ```console
 python cli.py --log-dir regression_logs --output failure_report.md
+```
+
+The analyzer retries transient network, rate-limit, and server errors up to
+three times. If analysis still fails, the report records a fallback diagnosis.
+Nested logs with the same basename are distinguished by their paths relative to
+the log directory.
+
+## Tests
+
+Run the standard-library test suite without installing dependencies:
+
+```console
+python -m unittest discover -s tests -v
 ```

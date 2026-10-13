@@ -1,11 +1,15 @@
 import json
-from urllib.error import URLError
+import time
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
 class AIAnalyzer:
     """Analyze simulation failures using an OpenAI-compatible chat API."""
 
+    _MAX_ATTEMPTS = 3
+    _INITIAL_RETRY_DELAY = 1
+    _MAX_RETRY_DELAY = 30
     _SYSTEM_PROMPT = (
         "You are an expert RTL verification engineer. Analyze the supplied "
         "simulation log snippet, diagnose the most likely root cause, and "
@@ -56,27 +60,56 @@ class AIAnalyzer:
                 },
                 method="POST",
             )
-            with urlopen(request, timeout=30) as response:
-                api_response = json.loads(response.read().decode("utf-8"))
-            content = api_response["choices"][0]["message"]["content"]
-            result = json.loads(content)
-            if not isinstance(result, dict) or any(
-                not isinstance(result.get(key), str)
-                for key in (
-                    "failure_category",
-                    "root_cause_summary",
-                    "recommended_fix",
+        except ValueError:
+            return self._fallback()
+
+        for attempt in range(self._MAX_ATTEMPTS):
+            try:
+                with urlopen(request, timeout=30) as response:
+                    api_response = json.loads(response.read().decode("utf-8"))
+                content = api_response["choices"][0]["message"]["content"]
+                result = json.loads(content)
+                if not isinstance(result, dict) or any(
+                    not isinstance(result.get(key), str)
+                    for key in (
+                        "failure_category",
+                        "root_cause_summary",
+                        "recommended_fix",
+                    )
+                ):
+                    return self._fallback()
+
+                return {
+                    "failure_category": result["failure_category"],
+                    "root_cause_summary": result["root_cause_summary"],
+                    "recommended_fix": result["recommended_fix"],
+                }
+            except HTTPError as error:
+                error.close()
+                if error.code != 429 and not 500 <= error.code < 600:
+                    return self._fallback()
+                retry_after = (
+                    error.headers.get("Retry-After") if error.headers else None
                 )
-            ):
+                delay = self._retry_delay(attempt, retry_after)
+            except (URLError, TimeoutError, OSError):
+                delay = self._retry_delay(attempt)
+            except (ValueError, KeyError, TypeError):
                 return self._fallback()
 
-            return {
-                "failure_category": result["failure_category"],
-                "root_cause_summary": result["root_cause_summary"],
-                "recommended_fix": result["recommended_fix"],
-            }
-        except (URLError, TimeoutError, OSError, ValueError, KeyError, TypeError):
-            return self._fallback()
+            if attempt + 1 == self._MAX_ATTEMPTS:
+                break
+            time.sleep(delay)
+
+        return self._fallback()
+
+    @classmethod
+    def _retry_delay(cls, attempt, retry_after=None):
+        try:
+            delay = float(retry_after)
+        except (TypeError, ValueError):
+            delay = cls._INITIAL_RETRY_DELAY * (2 ** attempt)
+        return max(0, min(delay, cls._MAX_RETRY_DELAY))
 
     @classmethod
     def _fallback(cls):

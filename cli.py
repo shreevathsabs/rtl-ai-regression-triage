@@ -50,7 +50,8 @@ def main(argv=None):
 
     analysis_results = []
     for file_index, log_file in enumerate(log_files, start=1):
-        print(f"[{file_index}/{len(log_files)}] Scanning {log_file.name}...")
+        relative_filename = log_file.relative_to(args.log_dir).as_posix()
+        print(f"[{file_index}/{len(log_files)}] Scanning {relative_filename}...")
         try:
             errors = log_parser.extract_errors(log_file)
         except OSError as error:
@@ -61,10 +62,10 @@ def main(argv=None):
         for error_index, error in enumerate(errors, start=1):
             print(
                 f"  Analyzing failure {error_index}/{len(errors)} "
-                f"from {log_file.name}..."
+                f"from {relative_filename}..."
             )
             diagnosis = analyzer.analyze_failure(error["context_snippet"])
-            analysis_results.append({"filename": error["filename"], **diagnosis})
+            analysis_results.append({"filename": relative_filename, **diagnosis})
             if diagnosis["failure_category"] == "Analysis Error":
                 print("  Warning: LLM analysis failed; using fallback result.")
 

@@ -1,5 +1,7 @@
 from collections import Counter
+import html
 from pathlib import Path
+import re
 
 
 class ReportGenerator:
@@ -48,19 +50,20 @@ class ReportGenerator:
                 recommended_fix = self._field(
                     result, "recommended_fix", "Not provided"
                 )
+                heading = self._escape_markdown(self._escape_heading(filename))
                 lines.extend(
                     [
-                        f"### {index}. {self._escape_heading(filename)}",
+                        f"### {index}. {heading}",
                         "",
-                        f"**Category:** {category}",
+                        f"**Category:** {self._escape_markdown(category)}",
                         "",
                         "**Root cause analysis**",
                         "",
-                        root_cause,
+                        self._escape_markdown(root_cause),
                         "",
                         "**Recommended fix**",
                         "",
-                        recommended_fix,
+                        self._escape_markdown(recommended_fix),
                         "",
                     ]
                 )
@@ -76,8 +79,13 @@ class ReportGenerator:
 
     @staticmethod
     def _escape_table(value):
-        return value.replace("|", r"\|").replace("\n", " ")
+        return ReportGenerator._escape_markdown(value.replace("\n", " "))
 
     @staticmethod
     def _escape_heading(value):
         return value.replace("\n", " ").replace("\r", " ")
+
+    @staticmethod
+    def _escape_markdown(value):
+        escaped = html.escape(value, quote=False)
+        return re.sub(r"([\\`*_{}\[\]()#+\-.!|>])", r"\\\1", escaped)
